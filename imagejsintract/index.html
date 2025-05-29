@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cheque Image Editor</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f8f8f8; margin: 0; padding: 20px; }
+    .container { max-width: 600px; margin: 40px auto; background: #fff; border: 1px solid #ccc; padding: 20px; border-radius: 8px; }
+    .controls { margin-bottom: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .controls button { padding: 8px 16px; font-size: 16px; border: 1px solid #888; border-radius: 4px; background: #f4f4f4; cursor: pointer; }
+    .controls button:active { background: #e0e0e0; }
+    .controls button.active-mode { 
+      background: #1976d2; 
+      color: #fff; 
+      border-color: #1976d2;
+    }
+    .info { font-size: 14px; color: #666; margin-left: 10px; }
+    
+    .chequebox {
+      width: 100%;
+      height: 400px;
+      background: #222;
+      position: relative;
+      overflow: hidden;
+      border: 2px solid #ccc;
+      cursor: crosshair;
+    }
+    
+    .chequebox.drag-mode {
+      cursor: move;
+    }
+    
+    .chequebox img {
+      position: absolute;
+      transition: filter 0.2s ease, transform 0.2s ease;
+      user-select: none;
+      -webkit-user-select: none;
+      -moz-user-select: none;
+    }
+    
+    .chequebox img.moving {
+      transition: none;
+    }
+    
+    .selector {
+      position: absolute;
+      border: 2px dashed #fff;
+      background: rgba(255, 255, 255, 0.1);
+      display: none;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="controls">
+      <button id="contrastMode">Contrast</button>
+      <button id="rotateMode">Rotate</button>
+      <button id="plus">+</button>
+      <button id="minus">-</button>
+      <button id="reset">Reset</button>
+      <span class="info">Click and drag to crop/zoom. Hold SPACE to drag image for further view.</span>
+    </div>
+    
+    <div class="chequebox" id="chequebox">
+      <img src="https://www.shutterstock.com/image-vector/bank-check-vector-template-filled-260nw-1461323885.jpg" alt="Cheque" id="chequeImg"/>
+      <div class="selector"></div>
+    </div>
+  </div>
+
+  <script>
+    let mode = null; 
+    let contrast = 100;
+    let currentAngle = 0;
+    let isDragging = false;
+    let isSpacePressed = false;
+    
+    const zoom = {
+      zoomboxLeft: null, zoomboxTop: null,
+      cursorStartX: null, cursorStartY: null,
+      imgStartLeft: null, imgStartTop: null,
+      minDragLeft: null, maxDragLeft: null, 
+      minDragTop: null, maxDragTop: null
+    };
+    
+    const img = document.getElementById('chequeImg');
+    const chequebox = document.getElementById('chequebox');
+    const selector = document.querySelector('.selector');
+    const contrastBtn = document.getElementById('contrastMode');
+    const rotateBtn = document.getElementById('rotateMode');
+    const plusBtn = document.getElementById('plus');
+    const minusBtn = document.getElementById('minus');
+    const resetBtn = document.getElementById('reset');
+    
+    window.addEventListener('load', function() {
+      resetImage();
+    });
+    
+    function updateImageFilters() {
+      img.style.filter = `contrast(${contrast}%)`;
+      img.style.transform = `rotate(${currentAngle}deg)`;
+    }
+    
+    function setActiveMode(selectedId) {
+      [contrastBtn, rotateBtn].forEach(btn => {
+        btn.classList.remove('active-mode');
+      });
+      if (selectedId) {
+        document.getElementById(selectedId).classList.add('active-mode');
+      }
+    }
+        
+    function resetImage() {
+      const zoomboxRect = chequebox.getBoundingClientRect();
+      img.style.left = '0px';
+      img.style.top = '0px';
+      img.style.width = chequebox.offsetWidth + 'px';
+      img.style.height = chequebox.offsetHeight + 'px';
+      contrast = 100;
+      currentAngle = 0;
+      updateImageFilters();
+      mode = null;
+      setActiveMode(null);
+    }
+
+    document.addEventListener('keydown', function(e) {
+      if (e.code === 'Space') {
+        e.preventDefault();
+        if (!img.classList.contains('moving')) {
+          isSpacePressed = true;
+          chequebox.classList.add('drag-mode');
+        }
+      }
+    });
+    
+    document.addEventListener('keyup', function(e) {
+      if (e.code === 'Space') {
+        if (!img.classList.contains('moving')) {
+          isSpacePressed = false;
+          chequebox.classList.remove('drag-mode');
+        }
+      }
+    });
+    
+    img.addEventListener('mousedown', function(e) {
+      e.preventDefault();
+      img.classList.add('moving');
+      chequebox.classList.add('active');
+      
+      const zoomboxRect = chequebox.getBoundingClientRect();
+      zoom.zoomboxLeft = zoomboxRect.left;
+      zoom.zoomboxTop = zoomboxRect.top;
+      
+      zoom.cursorStartX = e.pageX - zoom.zoomboxLeft;
+      zoom.cursorStartY = e.pageY - zoom.zoomboxTop;
+      
+      if (isSpacePressed) {        
+        const imgRect = img.getBoundingClientRect();
+        zoom.imgStartLeft = parseInt(img.style.left) || 0;
+        zoom.imgStartTop = parseInt(img.style.top) || 0;
+        
+        zoom.minDragLeft = chequebox.offsetWidth - img.offsetWidth;
+        zoom.maxDragLeft = 0;
+        zoom.minDragTop = chequebox.offsetHeight - img.offsetHeight;
+        zoom.maxDragTop = 0;
+      } else {        
+        zoom.minDragLeft = 0;
+        zoom.maxDragLeft = chequebox.offsetWidth;
+        zoom.minDragTop = 0;
+        zoom.maxDragTop = chequebox.offsetHeight;
+        
+        selector.style.display = 'block';
+        selector.style.width = '0px';
+        selector.style.height = '0px';
+        selector.style.left = zoom.cursorStartX + 'px';
+        selector.style.top = zoom.cursorStartY + 'px';
+      }
+    });
+    
+    document.addEventListener('mousemove', function(e) {
+      if (img.classList.contains('moving')) {
+        if (isSpacePressed) {
+          const newLeft = zoom.imgStartLeft + (e.pageX - zoom.zoomboxLeft) - zoom.cursorStartX;
+          const newTop = zoom.imgStartTop + (e.pageY - zoom.zoomboxTop) - zoom.cursorStartY;
+          
+          img.style.left = Math.max(zoom.minDragLeft, Math.min(zoom.maxDragLeft, newLeft)) + 'px';
+          img.style.top = Math.max(zoom.minDragTop, Math.min(zoom.maxDragTop, newTop)) + 'px';
+        } else {          
+          let width = (e.pageX - zoom.zoomboxLeft) - zoom.cursorStartX;
+          let height = (e.pageY - zoom.zoomboxTop) - zoom.cursorStartY;
+          
+          if (e.pageX - zoom.zoomboxLeft <= zoom.minDragLeft) width = zoom.minDragLeft - zoom.cursorStartX;
+          else if (e.pageX - zoom.zoomboxLeft >= zoom.maxDragLeft) width = zoom.maxDragLeft - zoom.cursorStartX;
+          if (e.pageY - zoom.zoomboxTop <= zoom.minDragTop) height = zoom.minDragTop - zoom.cursorStartY;
+          else if (e.pageY - zoom.zoomboxTop >= zoom.maxDragTop) height = zoom.maxDragTop - zoom.cursorStartY;
+          
+          selector.style.width = Math.abs(width) + 'px';
+          selector.style.height = Math.abs(height) + 'px';
+          
+          if (width < 0) selector.style.left = (zoom.cursorStartX - Math.abs(width)) + 'px';
+          if (height < 0) selector.style.top = (zoom.cursorStartY - Math.abs(height)) + 'px';
+        }
+      }
+    });
+    
+    document.addEventListener('mouseup', function() {
+      if (img.classList.contains('moving')) {
+        if (!isSpacePressed && selector.offsetWidth > 0 && selector.offsetHeight > 0) {          
+          const magnification = Math.min(
+            chequebox.offsetWidth / selector.offsetWidth,
+            chequebox.offsetHeight / selector.offsetHeight
+          );
+          
+          const imgLeft = parseInt(img.style.left) || 0;
+          const imgTop = parseInt(img.style.top) || 0;
+          const selectorLeft = parseInt(selector.style.left) || 0;
+          const selectorTop = parseInt(selector.style.top) || 0;
+          
+          const hFactor = img.offsetWidth / (selectorLeft - imgLeft);
+          const vFactor = img.offsetHeight / (selectorTop - imgTop);
+          
+          const newWidth = img.offsetWidth * magnification;
+          const newHeight = img.offsetHeight * magnification;
+          img.style.width = newWidth + 'px';
+          img.style.height = newHeight + 'px';
+          
+          const newImgLeft = selectorLeft - (newWidth / hFactor);
+          const newImgTop = selectorTop - (newHeight / vFactor);
+                    
+          const centerLeft = (chequebox.offsetWidth / 2) - (selector.offsetWidth * magnification / 2);
+          const centerTop = (chequebox.offsetHeight / 2) - (selector.offsetHeight * magnification / 2);
+          const deltaLeft = centerLeft - selectorLeft;
+          const deltaTop = centerTop - selectorTop;
+          
+          img.style.left = (newImgLeft + deltaLeft) + 'px';
+          img.style.top = (newImgTop + deltaTop) + 'px';
+        }
+        
+        selector.style.display = 'none';
+        selector.style.width = '0px';
+        selector.style.height = '0px';
+        selector.style.left = '0px';
+        selector.style.top = '0px';
+        
+        img.classList.remove('moving');
+        chequebox.classList.remove('active');
+      }
+    });
+    
+    
+    contrastBtn.addEventListener('click', function() {
+      mode = 'contrast';
+      setActiveMode('contrastMode');
+    });
+    
+    rotateBtn.addEventListener('click', function() {
+      mode = 'rotate';
+      setActiveMode('rotateMode');
+    });
+    
+    plusBtn.addEventListener('click', function() {
+      if (mode === 'contrast') {
+        contrast = Math.min(contrast + 10, 300);
+        updateImageFilters();
+      } else if (mode === 'rotate') {
+        currentAngle += 15;
+        updateImageFilters();
+      }
+    });
+    
+    minusBtn.addEventListener('click', function() {
+      if (mode === 'contrast') {
+        contrast = Math.max(contrast - 10, 0);
+        updateImageFilters();
+      } else if (mode === 'rotate') {
+        currentAngle -= 15;
+        updateImageFilters();
+      }
+    });
+    
+    resetBtn.addEventListener('click', resetImage);
+    
+  </script>
+</body>
+</html>

@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Enhanced Cheque Image Editor</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f8f8f8; margin: 0; padding: 20px; }
+    .container { max-width: 600px; margin: 40px auto; background: #fff; border: 1px solid #ccc; padding: 20px; border-radius: 8px; }
+    .controls { margin-bottom: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .controls button { padding: 8px 16px; font-size: 16px; border: 1px solid #888; border-radius: 4px; background: #f4f4f4; cursor: pointer; }
+    .controls button:hover { background: #e8e8e8; }
+    .controls button:active { background: #e0e0e0; }
+    .controls button.active-mode { 
+      background: #1976d2; 
+      color: #fff; 
+      border-color: #1976d2;
+    }
+    .info { font-size: 14px; color: #666; margin-left: 10px; }
+    
+    .chequebox {
+      width: 100%;
+      height: 400px;
+      background: #222;
+      position: relative;
+      overflow: hidden;
+      border: 2px solid #ccc;
+      cursor: default;
+    }
+    
+    .chequebox.drag-mode {
+      cursor: move;
+    }
+    
+    .chequebox.crop-mode {
+      cursor: crosshair;
+    }
+    
+    .chequebox img {
+      position: absolute;
+      transition: filter 0.2s ease, transform 0.2s ease;
+      user-select: none;
+      -webkit-user-select: none;
+      -moz-user-select: none;
+    }
+    
+    .chequebox img.moving {
+      transition: none;
+    }
+    
+    .selector {
+      position: absolute;
+      border: 2px dashed #000;
+      background: rgba(0, 0, 0, 0.1);
+      display: none;
+      pointer-events: none;
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="controls">
+      <button id="cropMode">Crop</button>
+      <button id="zoomMode">Zoom</button>
+      <button id="contrastMode">Contrast</button>
+      <button id="rotateMode">Rotate</button>
+      <button id="plus">+</button>
+      <button id="minus">-</button>
+      <button id="reset">Reset</button>
+      <span class="info">Select mode first, then use +/- buttons. Hold SPACE to drag image.</span>
+    </div>
+    
+    <div class="chequebox" id="chequebox">
+      <img src="https://www.shutterstock.com/image-vector/bank-check-vector-template-filled-260nw-1461323885.jpg" alt="Cheque" id="chequeImg"/>
+      <div class="selector"></div>
+    </div>
+  </div>
+
+  <script>
+    let mode = null; 
+    let contrast = 100;
+    let currentAngle = 0;
+    let zoomLevel = 1;
+    let isDragging = false;
+    let isSpacePressed = false;
+    
+    const zoom = {
+      zoomboxLeft: null, zoomboxTop: null,
+      cursorStartX: null, cursorStartY: null,
+      imgStartLeft: null, imgStartTop: null,
+      minDragLeft: null, maxDragLeft: null, 
+      minDragTop: null, maxDragTop: null
+    };
+    
+    const img = document.getElementById('chequeImg');
+    const chequebox = document.getElementById('chequebox');
+    const selector = document.querySelector('.selector');
+    const cropBtn = document.getElementById('cropMode');
+    const contrastBtn = document.getElementById('contrastMode');
+    const rotateBtn = document.getElementById('rotateMode');
+    const zoomBtn = document.getElementById('zoomMode');
+    const plusBtn = document.getElementById('plus');
+    const minusBtn = document.getElementById('minus');
+    const resetBtn = document.getElementById('reset');
+    
+    window.addEventListener('load', function() {
+      resetImage();
+    });
+    
+    function updateImageFilters() {
+      img.style.filter = `contrast(${contrast}%)`;
+      img.style.transform = `rotate(${currentAngle}deg)`;
+    }
+    
+    function setActiveMode(selectedId) {
+      [cropBtn, contrastBtn, rotateBtn, zoomBtn].forEach(btn => {
+        btn.classList.remove('active-mode');
+      });
+      
+      chequebox.classList.remove('crop-mode', 'drag-mode');
+      
+      if (selectedId) {
+        document.getElementById(selectedId).classList.add('active-mode');
+        if (selectedId === 'cropMode') {
+          chequebox.classList.add('crop-mode');
+        }
+      }
+    }
+        
+    function resetImage() {
+      img.style.left = '0px';
+      img.style.top = '0px';
+      img.style.width = chequebox.offsetWidth + 'px';
+      img.style.height = chequebox.offsetHeight + 'px';
+      contrast = 100;
+      currentAngle = 0;
+      zoomLevel = 1;
+      updateImageFilters();
+      mode = null;
+      setActiveMode(null);
+    }
+
+    function applyZoom(factor) {
+      const currentWidth = img.offsetWidth;
+      const currentHeight = img.offsetHeight;
+      const currentLeft = parseInt(img.style.left) || 0;
+      const currentTop = parseInt(img.style.top) || 0;
+      
+      const centerX = chequebox.offsetWidth / 2;
+      const centerY = chequebox.offsetHeight / 2;
+      
+      const newWidth = currentWidth * factor;
+      const newHeight = currentHeight * factor;
+      
+      const newLeft = currentLeft - (newWidth - currentWidth) / 2;
+      const newTop = currentTop - (newHeight - currentHeight) / 2;
+      
+      img.style.width = newWidth + 'px';
+      img.style.height = newHeight + 'px';
+      img.style.left = newLeft + 'px';
+      img.style.top = newTop + 'px';
+      
+      zoomLevel *= factor;
+    }
+
+    document.addEventListener('keydown', function(e) {
+      if (e.code === 'Space') {
+        e.preventDefault();
+        if (!img.classList.contains('moving')) {
+          isSpacePressed = true;
+          chequebox.classList.remove('crop-mode');
+          chequebox.classList.add('drag-mode');
+        }
+      }
+    });
+    
+    document.addEventListener('keyup', function(e) {
+      if (e.code === 'Space') {
+        if (!img.classList.contains('moving')) {
+          isSpacePressed = false;
+          chequebox.classList.remove('drag-mode');
+          if (mode === 'crop') {
+            chequebox.classList.add('crop-mode');
+          }
+        }
+      }
+    });
+    
+    img.addEventListener('mousedown', function(e) {
+      if (mode !== 'crop' && !isSpacePressed) {
+        return;
+      }
+      
+      e.preventDefault();
+      img.classList.add('moving');
+      
+      const zoomboxRect = chequebox.getBoundingClientRect();
+      zoom.zoomboxLeft = zoomboxRect.left;
+      zoom.zoomboxTop = zoomboxRect.top;
+      
+      zoom.cursorStartX = e.pageX - zoom.zoomboxLeft;
+      zoom.cursorStartY = e.pageY - zoom.zoomboxTop;
+      
+      if (isSpacePressed) {        
+        const imgRect = img.getBoundingClientRect();
+        zoom.imgStartLeft = parseInt(img.style.left) || 0;
+        zoom.imgStartTop = parseInt(img.style.top) || 0;
+        
+        zoom.minDragLeft = chequebox.offsetWidth - img.offsetWidth;
+        zoom.maxDragLeft = 0;
+        zoom.minDragTop = chequebox.offsetHeight - img.offsetHeight;
+        zoom.maxDragTop = 0;
+      } else if (mode === 'crop') {        
+        zoom.minDragLeft = 0;
+        zoom.maxDragLeft = chequebox.offsetWidth;
+        zoom.minDragTop = 0;
+        zoom.maxDragTop = chequebox.offsetHeight;
+        
+        selector.style.display = 'block';
+        selector.style.width = '0px';
+        selector.style.height = '0px';
+        selector.style.left = zoom.cursorStartX + 'px';
+        selector.style.top = zoom.cursorStartY + 'px';
+      }
+    });
+    
+    document.addEventListener('mousemove', function(e) {
+      if (img.classList.contains('moving')) {
+        if (isSpacePressed) {
+          const newLeft = zoom.imgStartLeft + (e.pageX - zoom.zoomboxLeft) - zoom.cursorStartX;
+          const newTop = zoom.imgStartTop + (e.pageY - zoom.zoomboxTop) - zoom.cursorStartY;
+          
+          img.style.left = Math.max(zoom.minDragLeft, Math.min(zoom.maxDragLeft, newLeft)) + 'px';
+          img.style.top = Math.max(zoom.minDragTop, Math.min(zoom.maxDragTop, newTop)) + 'px';
+        } else if (mode === 'crop') {          
+          let width = (e.pageX - zoom.zoomboxLeft) - zoom.cursorStartX;
+          let height = (e.pageY - zoom.zoomboxTop) - zoom.cursorStartY;
+          
+          const currentX = e.pageX - zoom.zoomboxLeft;
+          const currentY = e.pageY - zoom.zoomboxTop;
+          
+          if (currentX <= 0) width = -zoom.cursorStartX;
+          else if (currentX >= chequebox.offsetWidth) width = chequebox.offsetWidth - zoom.cursorStartX;
+          if (currentY <= 0) height = -zoom.cursorStartY;
+          else if (currentY >= chequebox.offsetHeight) height = chequebox.offsetHeight - zoom.cursorStartY;
+          
+          selector.style.width = Math.abs(width) + 'px';
+          selector.style.height = Math.abs(height) + 'px';
+          
+          if (width < 0) selector.style.left = (zoom.cursorStartX + width) + 'px';
+          if (height < 0) selector.style.top = (zoom.cursorStartY + height) + 'px';
+        }
+      }
+    });
+    
+    document.addEventListener('mouseup', function() {
+      if (img.classList.contains('moving')) {
+        if (mode === 'crop' && !isSpacePressed && selector.offsetWidth > 10 && selector.offsetHeight > 10) {          
+          const magnification = Math.min(
+            chequebox.offsetWidth / selector.offsetWidth,
+            chequebox.offsetHeight / selector.offsetHeight
+          );
+          
+          const imgLeft = parseInt(img.style.left) || 0;
+          const imgTop = parseInt(img.style.top) || 0;
+          const selectorLeft = parseInt(selector.style.left) || 0;
+          const selectorTop = parseInt(selector.style.top) || 0;
+          
+          const selectionCenterX = selectorLeft + selector.offsetWidth / 2;
+          const selectionCenterY = selectorTop + selector.offsetHeight / 2;
+          
+          const newWidth = img.offsetWidth * magnification;
+          const newHeight = img.offsetHeight * magnification;
+          
+          const relativeX = (selectionCenterX - imgLeft) / img.offsetWidth;
+          const relativeY = (selectionCenterY - imgTop) / img.offsetHeight;
+          
+          const newImgLeft = (chequebox.offsetWidth / 2) - (relativeX * newWidth);
+          const newImgTop = (chequebox.offsetHeight / 2) - (relativeY * newHeight);
+          
+          img.style.width = newWidth + 'px';
+          img.style.height = newHeight + 'px';
+          img.style.left = newImgLeft + 'px';
+          img.style.top = newImgTop + 'px';
+          
+          zoomLevel *= magnification;
+        }
+        
+        selector.style.display = 'none';
+        selector.style.width = '0px';
+        selector.style.height = '0px';
+        selector.style.left = '0px';
+        selector.style.top = '0px';
+        
+        img.classList.remove('moving');
+      }
+    });
+    
+    cropBtn.addEventListener('click', function() {
+      mode = 'crop';
+      setActiveMode('cropMode');
+    });
+    
+    contrastBtn.addEventListener('click', function() {
+      mode = 'contrast';
+      setActiveMode('contrastMode');
+    });
+    
+    rotateBtn.addEventListener('click', function() {
+      mode = 'rotate';
+      setActiveMode('rotateMode');
+    });
+    
+    zoomBtn.addEventListener('click', function() {
+      mode = 'zoom';
+      setActiveMode('zoomMode');
+    });
+    
+    plusBtn.addEventListener('click', function() {
+      if (mode === 'contrast') {
+        contrast = Math.min(contrast + 10, 300);
+        updateImageFilters();
+      } else if (mode === 'rotate') {
+        currentAngle += 15;
+        updateImageFilters();
+      } else if (mode === 'zoom') {
+        applyZoom(1.2);
+      }
+    });
+    
+    minusBtn.addEventListener('click', function() {
+      if (mode === 'contrast') {
+        contrast = Math.max(contrast - 10, 0);
+        updateImageFilters();
+      } else if (mode === 'rotate') {
+        currentAngle -= 15;
+        updateImageFilters();
+      } else if (mode === 'zoom') {
+        applyZoom(0.8);
+      }
+    });
+    
+    resetBtn.addEventListener('click', resetImage);
+    
+  </script>
+</body>
+</html>
